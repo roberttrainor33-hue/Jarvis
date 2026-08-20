@@ -764,7 +764,24 @@ function initRecognition(){
   return recognition;
 }
 
+// ---------- iOS audio unlock ----------
+// iOS Safari (and home-screen web apps) only allows speech synthesis to start
+// from a direct tap. Since replies arrive after a network delay, iOS can silently
+// block the audio unless we "prime" the speech engine synchronously on tap.
+let audioUnlocked = false;
+function unlockAudio(){
+  if(audioUnlocked || !('speechSynthesis' in window)) return;
+  try{
+    window.speechSynthesis.resume();
+    const primer = new SpeechSynthesisUtterance(' ');
+    primer.volume = 0;
+    window.speechSynthesis.speak(primer);
+    audioUnlocked = true;
+  }catch(e){ /* ignore */ }
+}
+
 coreBtn.onclick = () => {
+  unlockAudio();
   if(state === 'listening'){ recognition && recognition.stop(); return; }
   if(state !== 'idle') return;
   if(!speechSupported){
@@ -783,6 +800,7 @@ coreBtn.onclick = () => {
 
 // ---------- Text fallback ----------
 sendBtn.onclick = () => {
+  unlockAudio();
   const v = textInput.value.trim();
   if(!v) return;
   textInput.value = '';
@@ -925,6 +943,7 @@ function speak(text){
   utter.onend = () => setState('idle');
   utter.onerror = () => setState('idle');
   window.speechSynthesis.cancel();
+  window.speechSynthesis.resume();
   window.speechSynthesis.speak(utter);
 }
 
