@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#080b10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Jarvis">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<title>J.A.R.V.I.S.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#080b10;
+    --panel:#0e141c;
+    --panel-2:#121a24;
+    --line:#1c2733;
+    --cyan:#4fd8e8;
+    --cyan-dim:#2a5a63;
+    --gold:#e8a23e;
+    --text:#dceef2;
+    --text-mute:#5f7784;
+    --danger:#e85f4f;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(ellipse at 50% -10%, #0f1c22 0%, var(--bg) 55%);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  }
+  .app{
+    width:100%;
+    max-width:520px;
+    background:linear-gradient(180deg, var(--panel) 0%, var(--panel) 100%);
+    border:1px solid var(--line);
+    border-radius:18px;
+    overflow:hidden;
+    box-shadow: 0 0 0 1px rgba(79,216,232,0.04), 0 30px 80px -20px rgba(0,0,0,0.7);
+    position:relative;
+  }
+  .app::before{
+    content:"";
+    position:absolute; inset:0;
+    background: repeating-linear-gradient(0deg, rgba(79,216,232,0.02) 0px, rgba(79,216,232,0.02) 1px, transparent 1px, transparent 3px);
+    pointer-events:none;
+  }
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 20px 14px;
+    border-bottom:1px solid var(--line);
+  }
+  .brand{
+    font-family:'Orbitron',sans-serif;
+    font-weight:700;
+    font-size:15px;
+    letter-spacing:3px;
+    color:var(--cyan);
+  }
+  .status-row{display:flex; align-items:center; gap:8px;}
+  .status-dot{
+    width:7px; height:7px; border-radius:50%;
+    background:var(--text-mute);
+    transition:background .3s, box-shadow .3s;
+  }
+  .status-dot.on{background:var(--cyan); box-shadow:0 0 8px var(--cyan);}
+  .status-dot.busy{background:var(--gold); box-shadow:0 0 8px var(--gold); animation:blink 1s infinite;}
+  @keyframes blink{50%{opacity:.3;}}
+  .status-label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px;
+    letter-spacing:1.5px;
+    color:var(--text-mute);
+    text-transform:uppercase;
+  }
+  .mem-btn{
+    background:none; border:1px solid var(--line); color:var(--text-mute);
+    width:30px; height:30px; border-radius:8px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    font-size:13px; transition:.2s;
+  }
+  .mem-btn:hover{border-color:var(--cyan-dim); color:var(--cyan);}
+  .mem-btn{position:relative;}
+  .badge{
+    position:absolute; top:-6px; right:-6px;
+    background:var(--gold); color:#1a1206;
+    font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:600;
+    min-width:15px; height:15px; border-radius:8px;
+    display:flex; align-items:center; justify-content:center;
+    padding:0 3px;
+  }
+
+  .core-wrap{
+    position:relative;
+    display:flex; align-items:center; justify-content:center;
+    padding:52px 16px 44px;
+    overflow:visible;
+  }
+  .rings{
+    position:relative; width:340px; height:340px; max-width:88vw; max-height:88vw;
+    display:flex; align-items:center; justify-content:center;
+    transform-origin:center; will-change:transform;
+  }
+  .hud-svg{position:absolute; inset:0; width:100%; height:100%; overflow:visible;}
+  .rot-cw{animation-name:rotcw; animation-timing-function:linear; animation-iteration-count:infinite;}
+  .rot-ccw{animation-name:rotccw; animation-timing-function:linear; animation-iteration-count:infinite;}
+  @keyframes rotcw{to{transform:rotate(360deg);}}
+  @keyframes rotccw{to{transform:rotate(-360deg);}}
+  .sweep-arc{ opacity:0; }
+  .rings.listening .sweep-arc{opacity:1; animation:spin 2.2s linear infinite; stroke:var(--cyan);}
+  .rings.thinking .sweep-arc{opacity:1; animation:spin .8s linear infinite; stroke:var(--gold);}
+  .rings.speaking .sweep-arc{opacity:1; animation:spin 3s linear infinite; stroke:var(--gold);}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .core-btn{
+    width:126px; height:126px; border-radius:50%;
+    border:1px solid transparent;
+    background:transparent;
+    color:#0b1418;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+    position:relative; z-index:2;
+    transition: box-shadow .3s, border-color .3s, transform .15s;
+  }
+  .core-btn:active{transform:scale(0.97);}
+  .core-btn.listening{
+    border-color:var(--cyan);
+    box-shadow: 0 0 0 0 rgba(79,216,232,0.5), 0 0 30px 0 rgba(79,216,232,0.4);
+    animation:pulse 1.4s ease-out infinite;
+  }
+  .core-btn.thinking{border-color:var(--gold); box-shadow:0 0 30px -2px rgba(232,162,62,0.4);}
+  .core-btn.speaking{border-color:var(--gold); box-shadow:0 0 30px -2px rgba(232,162,62,0.5); animation:speakpulse 0.9s ease-in-out infinite;}
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(79,216,232,0.45), 0 0 20px 0 rgba(79,216,232,0.3);}
+    70%{box-shadow:0 0 0 22px rgba(79,216,232,0), 0 0 20px 0 rgba(79,216,232,0.3);}
+    100%{box-shadow:0 0 0 0 rgba(79,216,232,0), 0 0 20px 0 rgba(79,216,232,0.3);}
+  }
+  @keyframes speakpulse{0%,100%{transform:scale(1);}50%{transform:scale(1.04);}}
+  .core-btn svg{width:42px; height:42px;}
+
+  .transcript-zone{
+    display:none;
+  }
+
+  .typebar{
+    display:flex; gap:8px; padding:0 20px 20px;
+  }
+  .typebar input{
+    flex:1; background:var(--panel-2); border:1px solid var(--line);
+    color:var(--text); font-family:'Inter',sans-serif; font-size:13px;
+    padding:10px 12px; border-radius:9px; outline:none;
+  }
+  .typebar input:focus{border-color:var(--cyan-dim);}
+  .typebar button{
+    background:var(--cyan-dim); border:none; color:#e8fbff;
+    width:40px; border-radius:9px; cursor:pointer; font-size:15px;
+  }
+  .typebar button:hover{background:var(--cyan);}
+
+  /* memory drawer */
+  .drawer{
+    position:absolute; inset:0; background:var(--panel);
+    transform:translateY(100%); transition:transform .35s ease;
+    display:flex; flex-direction:column;
+    z-index:10;
+  }
+  .drawer.open{transform:translateY(0);}
+  .drawer-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 20px; border-bottom:1px solid var(--line);
+  }
+  .drawer-head h2{
+    font-family:'Orbitron',sans-serif; font-size:13px; letter-spacing:2px;
+    color:var(--cyan); margin:0; font-weight:700;
+  }
+  .close-btn{background:none;border:none;color:var(--text-mute);font-size:18px;cursor:pointer;}
+  .drawer-body{padding:16px 20px; overflow-y:auto; flex:1;}
+  .drawer-body p.desc{font-size:12px; color:var(--text-mute); margin:0 0 14px; line-height:1.5;}
+  .fact{
+    display:flex; align-items:flex-start; gap:8px;
+    background:var(--panel-2); border:1px solid var(--line);
+    border-radius:9px; padding:10px 12px; margin-bottom:8px;
+    font-size:12.5px; font-family:'JetBrains Mono',monospace; color:var(--text);
+  }
+  .fact button{
+    margin-left:auto; background:none; border:none; color:var(--text-mute);
+    cursor:pointer; font-size:13px; flex-shrink:0;
+  }
+  .fact button:hover{color:var(--danger);}
+  .task-row{display:flex; align-items:center; gap:10px;}
+  .task-check{
+    width:16px; height:16px; border-radius:5px; border:1px solid var(--cyan-dim);
+    background:transparent; flex-shrink:0; cursor:pointer; position:relative;
+    transition:.15s;
+  }
+  .task-check:hover{border-color:var(--cyan);}
+  .task-check::after{
+    content:""; position:absolute; inset:2px; border-radius:2px;
+    background:var(--cyan); opacity:0; transform:scale(0.4); transition:.15s;
+  }
+  .task-check.checked::after{opacity:1; transform:scale(1);}
+  .task-text{flex:1;}
+  .add-fact{display:flex; gap:8px; margin-top:10px;}
+  .add-fact input{
+    flex:1; background:var(--panel-2); border:1px solid var(--line);
+    color:var(--text); padding:9px 10px; border-radius:8px; font-size:12.5px; outline:none;
+  }
+  .add-fact input:focus{border-color:var(--cyan-dim);}
+  .add-fact button{
+    background:var(--cyan-dim); border:none; color:#e8fbff; padding:0 14px;
+    border-radius:8px; cursor:pointer; font-size:13px;
+  }
+  .empty{color:var(--text-mute); font-size:12px; font-style:italic; padding:6px 0;}
+
+  /* Chess */
+  .chess-body{display:flex; flex-direction:column; gap:12px; padding-top:12px;}
+  .chess-body .desc{font-size:12px; color:var(--text-mute); margin:0; line-height:1.5;}
+  .chess-body input[type="text"]{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    font-family:'Inter',sans-serif; font-size:12.5px; padding:10px 12px; border-radius:9px; outline:none;
+  }
+  .chess-body input[type="text"]:focus{border-color:var(--cyan-dim);}
+  .coach-btn{
+    background:var(--cyan-dim); border:none; color:#e8fbff; font-family:'Inter',sans-serif;
+    font-size:12.5px; padding:11px 16px; border-radius:9px; cursor:pointer;
+  }
+  .coach-btn:hover{background:var(--cyan); color:#04181c;}
+  .coach-btn:disabled{opacity:0.4; cursor:default; background:var(--cyan-dim); color:#e8fbff;}
+  .chess-preview{
+    width:100%; border-radius:10px; border:1px solid var(--line); display:block;
+  }
+  .coach-panel{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
+    padding:12px 14px; font-size:12.5px; line-height:1.6; color:var(--text);
+    min-height:50px; white-space:pre-wrap;
+  }
+</style>
+</head>
+
+<body>
+
+<div class="app" id="app">
+  <header>
+    <div class="brand">J.A.R.V.I.S.</div>
+    <div class="status-row">
+      <span class="status-dot" id="statusDot"></span>
+      <span class="status-label" id="statusLabel">STANDBY</span>
+      <button class="mem-btn" id="chessBtn" title="Chess">&#9816;</button>
+      <button class="mem-btn" id="settingsBtn" title="Settings">&#9881;</button>
+      <button class="mem-btn" id="tasksBtn" title="Tasks">
+        <span id="taskBadge" class="badge" style="display:none;">0</span>
+        &#9745;
+      </button>
+      <button class="mem-btn" id="memBtn" title="Memory">&#9776;</button>
+    </div>
+  </header>
+
+  <div class="core-wrap">
+    <div class="rings" id="rings">
+      <svg class="hud-svg" id="hudSvg" viewBox="0 0 300 300"></svg>
+      <button class="core-btn" id="coreBtn" title="Tap to talk">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+          <path d="M12 1a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4Z"/>
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+          <line x1="12" y1="18" x2="12" y2="22"/>
+          <line x1="8" y1="22" x2="16" y2="22"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="transcript-zone" id="transcriptZone">
+    <div class="hint" id="hint">Tap the core, or type below, to speak with Jarvis.</div>
+  </div>
+
+  <div class="typebar">
+    <input type="text" id="textInput" placeholder="Or type your question..." />
+    <button id="sendBtn" title="Send">&#10148;</button>
+  </div>
+
+  <!-- Settings drawer -->
+  <div class="drawer" id="settingsDrawer">
+    <div class="drawer-head">
+      <h2>SETTINGS</h2>
+      <button class="close-btn" id="closeSettingsDrawer">&#10005;</button>
+    </div>
+    <div class="drawer-body">
+      <p class="desc">If you're running Jarvis inside Claude, you don't need this — leave it blank. If you've installed this as a standalone app, paste your own Anthropic API key here (get one at console.anthropic.com). It's stored only in this browser, never sent anywhere but Anthropic's API.</p>
+      <input type="password" id="apiKeyInput" placeholder="sk-ant-..." style="width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text); padding:10px 12px; border-radius:9px; font-family:'JetBrains Mono',monospace; font-size:12px; outline:none; box-sizing:border-box;" />
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button id="saveKeyBtn" class="coach-btn" style="flex:1;">Save Key</button>
+        <button id="clearKeyBtn" class="coach-btn" style="background:transparent; border:1px solid var(--line); color:var(--text-mute);">Clear</button>
+      </div>
+      <p class="desc" id="keyStatus" style="margin-top:14px;"></p>
+    </div>
+  </div>
+
+  <!-- Chess drawer -->
+  <div class="drawer chess-drawer" id="chessDrawer">
+    <div class="drawer-head">
+      <h2>CHESS COACH</h2>
+      <button class="close-btn" id="closeChessDrawer">&#10005;</button>
+    </div>
+    <div class="drawer-body chess-body">
+      <p class="desc">Upload a screenshot of a chess position — from Lichess, Chess.com, an analysis board, or a photo of a real board — and Jarvis will read it and coach you on it.</p>
+
+      <input type="file" id="chessFileInput" accept="image/*" style="display:none;" />
+      <button id="chessUploadBtn" class="coach-btn">Upload a position</button>
+
+      <div id="chessPreviewWrap" style="display:none;">
+        <img id="chessPreview" class="chess-preview" alt="Uploaded position" />
+      </div>
+
+      <input type="text" id="chessQuestion" placeholder="Optional: ask something specific (e.g. 'what's my best move as white?')" />
+
+      <button id="chessAnalyzeBtn" class="coach-btn" disabled>Analyze this position</button>
+
+      <div class="coach-panel" id="coachPanel">
+        <div class="empty">Upload a position to get started.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tasks drawer -->
+  <div class="drawer" id="tasksDrawer">
+    <div class="drawer-head">
+      <h2>TASKS</h2>
+      <button class="close-btn" id="closeTasksDrawer">&#10005;</button>
+    </div>
+    <div class="drawer-body">
+      <p class="desc">Say "remember to..." or "remind me to..." and Jarvis adds it here. Tell him you've finished something and he'll check it off. You can also manage tasks by hand.</p>
+      <div id="taskList"></div>
+      <div class="add-fact">
+        <input type="text" id="newTask" placeholder="e.g. Pick up dry cleaning" />
+        <button id="addTaskBtn">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Memory drawer -->
+  <div class="drawer" id="drawer">
+    <div class="drawer-head">
+      <h2>MEMORY</h2>
+      <button class="close-btn" id="closeDrawer">&#10005;</button>
+    </div>
+    <div class="drawer-body">
+      <p class="desc">Facts stored here are given to Jarvis on every conversation — schedule, preferences, routines, anything you want it to just know.</p>
+      <div id="factList"></div>
+      <div class="add-fact">
+        <input type="text" id="newFact" placeholder="e.g. Gym schedule: Mon/Wed/Fri upper body, Tue/Thu legs" />
+        <button id="addFactBtn">Add</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- Storage shim: use Claude artifact storage if present, otherwise localStorage ----------
+if(typeof window.storage === 'undefined'){
+  window.storage = {
+    async get(key){
+      try{
+        const v = localStorage.getItem(key);
+        return v === null ? null : { key, value: v, shared: false };
+      }catch(e){ return null; }
+    },
+    async set(key, value){
+      try{
+        const v = typeof value === 'string' ? value : JSON.stringify(value);
+        localStorage.setItem(key, v);
+        return { key, value: v, shared: false };
+      }catch(e){ return null; }
+    },
+    async delete(key){
+      try{ localStorage.removeItem(key); return { key, deleted: true, shared: false }; }
+      catch(e){ return null; }
+    },
+    async list(prefix){
+      try{
+        const keys = Object.keys(localStorage).filter(k => !prefix || k.startsWith(prefix));
+        return { keys, prefix, shared: false };
+      }catch(e){ return null; }
+    }
+  };
+}
+
+// ---------- Dual-mode Claude API call: Claude's own proxy when embedded, direct API + your key when standalone ----------
+function getApiKey(){
+  try{ return (localStorage.getItem('jarvis-api-key') || '').trim(); }
+  catch(e){ return ''; }
+}
+async function callClaude(bodyWithoutModel){
+  const key = getApiKey();
+  const headers = { "Content-Type": "application/json" };
+  const body = { ...bodyWithoutModel };
+  if(key){
+    // Standalone mode: talk to the real Anthropic API directly with your key
+    headers["x-api-key"] = key;
+    headers["anthropic-version"] = "2023-06-01";
+    headers["anthropic-dangerous-direct-browser-access"] = "true";
+    body.model = "claude-sonnet-5";
+  } else {
+    // Embedded-in-Claude mode: the artifact's built-in proxy handles auth
+    body.model = "claude-sonnet-4-6";
+  }
+  return fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body)
+  });
+}
+
+const MEM_KEY = 'jarvis-memory-v1';
+let memory = { facts: [], history: [], tasks: [] };
+
+const el = id => document.getElementById(id);
+const coreBtn = el('coreBtn'), rings = el('rings');
+const statusDot = el('statusDot'), statusLabel = el('statusLabel');
+const transcriptZone = el('transcriptZone'), hint = el('hint');
+const textInput = el('textInput'), sendBtn = el('sendBtn');
+const drawer = el('drawer'), memBtn = el('memBtn'), closeDrawer = el('closeDrawer');
+const factList = el('factList'), newFact = el('newFact'), addFactBtn = el('addFactBtn');
+const tasksDrawer = el('tasksDrawer'), tasksBtn = el('tasksBtn'), closeTasksDrawer = el('closeTasksDrawer');
+const taskList = el('taskList'), newTask = el('newTask'), addTaskBtn = el('addTaskBtn'), taskBadge = el('taskBadge');
+
+let state = 'idle'; // idle | listening | thinking | speaking
+let recognition = null;
+let speechSupported = false;
+let sweepEl = null;
+let growLoop = false;
+
+function setState(s){
+  state = s;
+  coreBtn.classList.remove('listening','thinking','speaking');
+  rings.classList.remove('listening','thinking','speaking');
+  if(s === 'listening'){ coreBtn.classList.add('listening'); rings.classList.add('listening'); statusDot.className='status-dot on'; statusLabel.textContent='LISTENING'; }
+  else if(s === 'thinking'){ coreBtn.classList.add('thinking'); rings.classList.add('thinking'); statusDot.className='status-dot busy'; statusLabel.textContent='PROCESSING'; }
+  else if(s === 'speaking'){ coreBtn.classList.add('speaking'); rings.classList.add('speaking'); statusDot.className='status-dot busy'; statusLabel.textContent='RESPONDING'; }
+  else { statusDot.className='status-dot'; statusLabel.textContent='STANDBY'; }
+
+  if(s === 'speaking') startGrow(); else stopGrow();
+}
+
+// ---------- Growing / motion while speaking ----------
+function startGrow(){
+  growLoop = true;
+  const t0 = performance.now();
+  function frame(t){
+    if(!growLoop) return;
+    const elapsed = (t - t0) / 1000;
+    // layered sine waves so the growth feels organic, not metronomic
+    const wave = Math.abs(Math.sin(elapsed * 2.3)) * 0.7 + Math.abs(Math.sin(elapsed * 5.1)) * 0.3;
+    const scale = 1 + wave * 0.16;
+    rings.style.transform = `scale(${scale.toFixed(3)})`;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+function stopGrow(){
+  growLoop = false;
+  rings.style.transition = 'transform .4s cubic-bezier(.34,1.56,.64,1)';
+  rings.style.transform = 'scale(1)';
+  setTimeout(() => { rings.style.transition = ''; }, 420);
+}
+
+// ---------- Procedural HUD ----------
+const SVGNS = 'http://www.w3.org/2000/svg';
+function sv(tag, attrs){
+  const e = document.createElementNS(SVGNS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+function hexPolygon(cx, cy, r, stroke, opacity, width){
+  const pts = [];
+  for(let i=0;i<6;i++){
+    const a = (i*60) * Math.PI/180;
+    pts.push(`${(cx+r*Math.cos(a)).toFixed(1)},${(cy+r*Math.sin(a)).toFixed(1)}`);
+  }
+  return sv('polygon',{points:pts.join(' '), fill:'none', stroke, 'stroke-width':width||0.8, opacity});
+}
+function buildHUD(){
+  const svg = el('hudSvg');
+  const cx=170, cy=170;
+  svg.setAttribute('viewBox','0 0 340 340');
+
+  const defs = sv('defs',{});
+  const filter = sv('filter',{id:'coreGlow', x:'-100%', y:'-100%', width:'300%', height:'300%'});
+  const blur = sv('feGaussianBlur',{stdDeviation:'7', result:'blur'});
+  const merge = sv('feMerge',{});
+  merge.appendChild(sv('feMergeNode',{in:'blur'}));
+  merge.appendChild(sv('feMergeNode',{in:'SourceGraphic'}));
+  filter.appendChild(blur); filter.appendChild(merge);
+  defs.appendChild(filter);
+
+  const softGlow = sv('filter',{id:'softGlow', x:'-60%', y:'-60%', width:'220%', height:'220%'});
+  softGlow.appendChild(sv('feGaussianBlur',{stdDeviation:'1.4'}));
+  defs.appendChild(softGlow);
+
+  const grad = sv('radialGradient',{id:'coreGrad'});
+  grad.appendChild(sv('stop',{offset:'0%','stop-color':'#ffffff'}));
+  grad.appendChild(sv('stop',{offset:'35%','stop-color':'#eafdff'}));
+  grad.appendChild(sv('stop',{offset:'70%','stop-color':'#4fd8e8'}));
+  grad.appendChild(sv('stop',{offset:'100%','stop-color':'#0b1418','stop-opacity':'0'}));
+  defs.appendChild(grad);
+  svg.appendChild(defs);
+
+  // crosshair spokes, static, behind everything (straight + diagonal)
+  const gCross = sv('g',{opacity:'0.4'});
+  gCross.appendChild(sv('line',{x1:2,y1:cy,x2:338,y2:cy,stroke:'#182430','stroke-width':1}));
+  gCross.appendChild(sv('line',{x1:cx,y1:20,x2:cx,y2:320,stroke:'#182430','stroke-width':1}));
+  gCross.appendChild(sv('line',{x1:cx-92,y1:cy-92,x2:cx+92,y2:cy+92,stroke:'#141d26','stroke-width':1,opacity:'0.6'}));
+  gCross.appendChild(sv('line',{x1:cx-92,y1:cy+92,x2:cx+92,y2:cy-92,stroke:'#141d26','stroke-width':1,opacity:'0.6'}));
+  svg.appendChild(gCross);
+
+  // corner viewfinder brackets
+  const gBrackets = sv('g',{opacity:'0.5', stroke:'#2a5a63','stroke-width':'1.4', fill:'none'});
+  [[0,0,1,1],[340,0,-1,1],[0,340,1,-1],[340,340,-1,-1]].forEach(([bx,by,dx,dy]) => {
+    gBrackets.appendChild(sv('path',{ d:`M ${bx+dx*2} ${by+dy*26} L ${bx+dx*2} ${by+dy*2} L ${bx+dx*26} ${by+dy*2}` }));
+  });
+  svg.appendChild(gBrackets);
+
+  // outer dashed ring + hexagon accents, slow rotate
+  const gOuter = sv('g',{style:'transform-box:fill-box;transform-origin:center;animation-duration:90s;', class:'rot-cw'});
+  gOuter.appendChild(sv('circle',{cx,cy,r:160,fill:'none',stroke:'#1c2733','stroke-width':1,'stroke-dasharray':'1 8'}));
+  for(let i=0;i<8;i++){
+    const a = i*45 * Math.PI/180;
+    gOuter.appendChild(hexPolygon(cx+160*Math.cos(a), cy+160*Math.sin(a), 7, '#25404c', 0.75));
+  }
+  svg.appendChild(gOuter);
+
+  // chevron / arrow accents scattered around, slow counter-rotate
+  const gChevron = sv('g',{style:'transform-box:fill-box;transform-origin:center;animation-duration:65s;', class:'rot-ccw', opacity:'0.55'});
+  [20,95,190,260,315].forEach((deg,i) => {
+    const rad = deg*Math.PI/180, r = 149;
+    const px = cx+r*Math.cos(rad), py = cy+r*Math.sin(rad);
+    gChevron.appendChild(sv('polygon',{
+      points:`${px-5},${py-4} ${px+3},${py} ${px-5},${py+4}`,
+      fill:'none', stroke:'#3a6a74','stroke-width':1
+    }));
+  });
+  svg.appendChild(gChevron);
+
+  // fine tick ring, counter-rotate (dense)
+  const gFineTicks = sv('g',{style:'transform-box:fill-box;transform-origin:center;animation-duration:48s;', class:'rot-ccw'});
+  for(let i=0;i<72;i++){
+    const ang = i*5, rad = ang*Math.PI/180;
+    const major = i % 6 === 0;
+    const r1 = 140, r2 = major ? 130 : 135;
+    gFineTicks.appendChild(sv('line',{
+      x1:(cx+r1*Math.cos(rad)).toFixed(1), y1:(cy+r1*Math.sin(rad)).toFixed(1),
+      x2:(cx+r2*Math.cos(rad)).toFixed(1), y2:(cy+r2*Math.sin(rad)).toFixed(1),
+      stroke:'#2a5a63', 'stroke-width': major ? 1.3 : 0.6, opacity: major ? 0.8 : 0.3
+    }));
+  }
+  svg.appendChild(gFineTicks);
+
+  // tick ring, opposite rotation
+  const gTicks = sv('g',{style:'transform-box:fill-box;transform-origin:center;animation-duration:58s;', class:'rot-cw'});
+  for(let i=0;i<40;i++){
+    const ang = i*9, rad = ang*Math.PI/180;
+    const major = i % 4 === 0;
+    const r1 = 118, r2 = major ? 104 : 111;
+    gTicks.appendChild(sv('line',{
+      x1:(cx+r1*Math.cos(rad)).toFixed(1), y1:(cy+r1*Math.sin(rad)).toFixed(1),
+      x2:(cx+r2*Math.cos(rad)).toFixed(1), y2:(cy+r2*Math.sin(rad)).toFixed(1),
+      stroke:'#2a5a63', 'stroke-width': major ? 1.4 : 0.7, opacity: major ? 0.85 : 0.35
+    }));
+  }
+  svg.appendChild(gTicks);
+
+  // data ring with small rect markers, slow rotate
+  const gData = sv('g',{style:'transform-box:fill-box;transform-origin:center;animation-duration:140s;', class:'rot-cw'});
+  gData.appendChild(sv('circle',{cx,cy,r:96,fill:'none',stroke:'#2a5a63','stroke-width':1,'stroke-dasharray':'3 7',opacity:'0.5'}));
+  for(let i=0;i<7;i++){
+    const ang = (i*51+18)*Math.PI/180;
+    gData.appendChild(sv('rect',{
+      x:(cx+96*Math.cos(ang)-4).toFixed(1), y:(cy+96*Math.sin(ang)-2).toFixed(1),
+      width:8, height:4, fill:'none', stroke:'#4fd8e8','stroke-width':0.8, opacity:'0.65'
+    }));
+  }
+  svg.appendChild(gData);
+
+  // sweep indicator (listening / thinking / speaking)
+  sweepEl = sv('circle',{
+    cx, cy, r:82, fill:'none', stroke:'#4fd8e8','stroke-width':2.2,
+    'stroke-dasharray':'50 380','stroke-linecap':'round',
+    class:'sweep-arc', style:'transform-box:fill-box;transform-origin:center;'
+  });
+  svg.appendChild(sweepEl);
+
+  // inner concentric rings
+  [70,58,46,34].forEach((r,idx) => {
+    svg.appendChild(sv('circle',{cx,cy,r,fill:'none',stroke:'#2a5a63','stroke-width':0.8,opacity:(0.55-idx*0.11).toFixed(2)}));
+  });
+
+  // small arc accents near core, like HUD readout segments
+  svg.appendChild(sv('path',{
+    d:`M ${cx-40} ${cy+24} A 46 46 0 0 1 ${cx+20} ${cy-38}`,
+    fill:'none', stroke:'#4fd8e8', 'stroke-width':2.2, opacity:'0.65', 'stroke-linecap':'round'
+  }));
+  svg.appendChild(sv('path',{
+    d:`M ${cx+38} ${cy+18} A 40 40 0 0 0 ${cx+8} ${cy-40}`,
+    fill:'none', stroke:'#e8a23e', 'stroke-width':1.6, opacity:'0.4', 'stroke-linecap':'round'
+  }));
+
+  // core glow + bright center
+  svg.appendChild(sv('circle',{cx,cy,r:32,fill:'url(#coreGrad)',filter:'url(#coreGlow)'}));
+  svg.appendChild(sv('circle',{cx,cy,r:6,fill:'#ffffff',filter:'url(#softGlow)'}));
+}
+
+function addLine(role, text){
+  if(hint) hint.remove();
+  const d = document.createElement('div');
+  d.className = 'line ' + (role === 'user' ? 'you' : 'jarvis');
+  d.textContent = text;
+  transcriptZone.appendChild(d);
+  transcriptZone.scrollTop = transcriptZone.scrollHeight;
+}
+
+// ---------- Storage ----------
+async function loadMemory(){
+  try{
+    const res = await window.storage.get(MEM_KEY);
+    if(res && res.value){ memory = JSON.parse(res.value); }
+  }catch(e){ /* nothing stored yet */ }
+  if(!memory.tasks) memory.tasks = [];
+  renderFacts();
+  renderTasks();
+}
+async function saveMemory(){
+  try{ await window.storage.set(MEM_KEY, JSON.stringify(memory)); }
+  catch(e){ console.error('save failed', e); }
+}
+function renderFacts(){
+  factList.innerHTML = '';
+  if(!memory.facts.length){
+    factList.innerHTML = '<div class="empty">No facts stored yet.</div>';
+    return;
+  }
+  memory.facts.forEach((f, i) => {
+    const row = document.createElement('div');
+    row.className = 'fact';
+    row.innerHTML = `<span>${escapeHtml(f)}</span>`;
+    const btn = document.createElement('button');
+    btn.textContent = '✕';
+    btn.onclick = () => { memory.facts.splice(i,1); renderFacts(); saveMemory(); };
+    row.appendChild(btn);
+    factList.appendChild(row);
+  });
+}
+function genId(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function renderTasks(){
+  taskList.innerHTML = '';
+  if(!memory.tasks.length){
+    taskList.innerHTML = '<div class="empty">No tasks right now.</div>';
+  } else {
+    memory.tasks.forEach((t) => {
+      const row = document.createElement('div');
+      row.className = 'fact task-row';
+      const check = document.createElement('button');
+      check.className = 'task-check';
+      check.title = 'Mark done';
+      check.onclick = () => completeTask(t.id);
+      const span = document.createElement('span');
+      span.className = 'task-text';
+      span.textContent = t.text;
+      const del = document.createElement('button');
+      del.textContent = '✕';
+      del.title = 'Delete';
+      del.onclick = () => completeTask(t.id);
+      row.appendChild(check); row.appendChild(span); row.appendChild(del);
+      taskList.appendChild(row);
+    });
+  }
+  const n = memory.tasks.length;
+  taskBadge.style.display = n ? 'flex' : 'none';
+  taskBadge.textContent = n;
+}
+function addTask(text){
+  memory.tasks.push({ id: genId(), text, done:false });
+  renderTasks();
+  saveMemory();
+}
+function completeTask(id){
+  memory.tasks = memory.tasks.filter(t => t.id !== id);
+  renderTasks();
+  saveMemory();
+}
+function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+addFactBtn.onclick = () => {
+  const v = newFact.value.trim();
+  if(!v) return;
+  memory.facts.push(v);
+  newFact.value = '';
+  renderFacts();
+  saveMemory();
+};
+newFact.addEventListener('keydown', e => { if(e.key === 'Enter') addFactBtn.click(); });
+
+addTaskBtn.onclick = () => {
+  const v = newTask.value.trim();
+  if(!v) return;
+  addTask(v);
+  newTask.value = '';
+};
+newTask.addEventListener('keydown', e => { if(e.key === 'Enter') addTaskBtn.click(); });
+
+memBtn.onclick = () => { tasksDrawer.classList.remove('open'); document.getElementById('chessDrawer').classList.remove('open'); document.getElementById('settingsDrawer').classList.remove('open'); drawer.classList.add('open'); };
+closeDrawer.onclick = () => drawer.classList.remove('open');
+tasksBtn.onclick = () => { drawer.classList.remove('open'); document.getElementById('chessDrawer').classList.remove('open'); document.getElementById('settingsDrawer').classList.remove('open'); tasksDrawer.classList.add('open'); };
+closeTasksDrawer.onclick = () => tasksDrawer.classList.remove('open');
+
+// ---------- Speech recognition ----------
+function initRecognition(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ speechSupported = false; return; }
+  speechSupported = true;
+  recognition = new SR();
+  recognition.lang = 'en-US';
+  recognition.interimResults = true;
+  recognition.continuous = false;
+
+  let finalTranscript = '';
+
+  recognition.onresult = (e) => {
+    let interim = '';
+    for(let i = e.resultIndex; i < e.results.length; i++){
+      const t = e.results[i][0].transcript;
+      if(e.results[i].isFinal) finalTranscript += t;
+      else interim += t;
+    }
+    statusLabel.textContent = (finalTranscript + interim).slice(0,40) || 'LISTENING';
+  };
+
+  recognition.onend = () => {
+    if(finalTranscript.trim()){
+      const q = finalTranscript.trim();
+      finalTranscript = '';
+      handleQuery(q);
+    } else {
+      setState('idle');
+    }
+  };
+
+  recognition.onerror = (e) => {
+    setState('idle');
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+      addLine('jarvis', "I don't have microphone access. Check your browser's permission settings, or just type instead.");
+    }
+  };
+
+  return recognition;
+}
+
+coreBtn.onclick = () => {
+  if(state === 'listening'){ recognition && recognition.stop(); return; }
+  if(state !== 'idle') return;
+  if(!speechSupported){
+    if(!initRecognition()){
+      addLine('jarvis', "Voice input isn't supported in this browser. Try Chrome or Edge — or just type your question below.");
+      return;
+    }
+  }
+  try{
+    recognition.start();
+    setState('listening');
+  }catch(err){
+    setState('idle');
+  }
+};
+
+// ---------- Text fallback ----------
+sendBtn.onclick = () => {
+  const v = textInput.value.trim();
+  if(!v) return;
+  textInput.value = '';
+  handleQuery(v);
+};
+textInput.addEventListener('keydown', e => { if(e.key === 'Enter') sendBtn.click(); });
+
+// ---------- Claude call ----------
+function parseActions(raw){
+  const actionLineRe = /^ACTION:\s*(\{.*\})\s*$/gm;
+  const actions = [];
+  let match;
+  while((match = actionLineRe.exec(raw)) !== null){
+    try{ actions.push(JSON.parse(match[1])); }catch(e){ /* skip malformed */ }
+  }
+  const spoken = raw.replace(actionLineRe, '').replace(/\n{2,}/g, '\n').trim();
+  return { spoken, actions };
+}
+
+function applyActions(actions){
+  actions.forEach(a => {
+    if(a.type === 'add_task' && a.text){
+      memory.tasks.push({ id: genId(), text: a.text, done:false });
+    } else if((a.type === 'complete_task' || a.type === 'delete_task') && a.id){
+      memory.tasks = memory.tasks.filter(t => t.id !== a.id);
+    }
+  });
+  if(actions.length){ renderTasks(); saveMemory(); }
+}
+
+async function handleQuery(question){
+  addLine('user', question);
+  setState('thinking');
+
+  memory.history.push({ role:'user', content: question });
+  if(memory.history.length > 16) memory.history = memory.history.slice(-16);
+  saveMemory();
+
+  const factsBlock = memory.facts.length
+    ? memory.facts.map(f => '- ' + f).join('\n')
+    : '(no stored facts yet)';
+
+  const tasksBlock = memory.tasks.length
+    ? memory.tasks.map(t => `- [${t.id}] ${t.text}`).join('\n')
+    : '(no tasks currently)';
+
+  const systemPrompt = `You are Jarvis, the user's personal voice assistant, inspired by the AI from the Iron Man films: a brilliant British butler-scientist with a dry, deadpan wit. You are unfailingly competent and impeccably polite, but you have a real personality — subtle sarcasm, understatement, and a knack for a perfectly-timed dry remark, the way Jarvis needles Tony Stark without ever being unhelpful or mean. Think raised-eyebrow humor, not slapstick.
+Guidelines for the wit:
+- Let it come through in word choice and understatement rather than forced jokes — e.g. calling a terrible idea "an option" or a 6am gym session "an ambitious choice, sir."
+- Don't force a joke into every single reply — read the moment. Straightforward questions (facts, schedules, urgent tasks) get a mostly straight answer with maybe a light touch; there's room for a proper quip when the user's tone invites it or the situation is a bit absurd.
+- Never let the humor get in the way of actually answering the question. The wit is seasoning, not the meal.
+- Always address the user as "sir" at least once per reply, in true Jarvis fashion. Favour British phrasing and spelling where natural (e.g. "brilliant", "quite", "I'm afraid").
+Your replies are spoken out loud through text-to-speech, so:
+- Respond in 1-3 short sentences. No lists, no markdown, no headers, no emoji.
+- Speak naturally, like a real spoken answer, not written text.
+- Be direct. Give the answer first, context second.
+
+You are also a knowledgeable fitness and nutrition coach. When the user asks about training, running, lifting, marathons, Ironman/triathlon, or diet, answer with real expertise: periodization and progressive overload for strength work, base-building/tempo/long-run structure and tapering for marathon training, brick workouts and fueling strategy for triathlon/Ironman, and practical nutrition (protein targets, caloric balance for their goal, race-day fueling). Keep it conversational and brief like everything else, but give real, specific, evidence-based guidance rather than vague platitudes. You are not a doctor — if something sounds like an injury or medical concern, say so and suggest a professional, but don't be shy about normal training and nutrition advice.
+
+Known facts about the user (use these to answer personal/schedule questions; do not invent facts not listed here):
+${factsBlock}
+
+Current tasks/reminders (each has an id in brackets):
+${tasksBlock}
+
+You can manage the task list. This is the ONLY mechanism that changes it — do not just say you added or removed something without emitting the matching line below, or nothing will actually happen.
+- When the user asks you to remember, add, or remind them of a task, write your short spoken confirmation, then on its own new line write exactly:
+ACTION: {"type":"add_task","text":"<short task description>"}
+- When the user says they've finished, completed, or want a task removed/cancelled, match it to the closest task id above, write your short spoken confirmation, then on its own new line write exactly:
+ACTION: {"type":"complete_task","id":"<the matching id>"}
+- You may include more than one ACTION line if the user asks for multiple changes in one turn.
+- Only include an ACTION line when the request genuinely requires changing the task list. Never mention the word ACTION, ids, or JSON in your spoken sentence itself — write it as if only the sentence will be read aloud.
+- If the user references a task that doesn't clearly match anything in the list, ask them to clarify instead of guessing.
+
+Today's date: ${new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}`;
+
+  try{
+    const response = await callClaude({
+      max_tokens: 1000,
+      system: systemPrompt,
+      messages: memory.history
+    });
+    const data = await response.json();
+    if(data.error){
+      throw new Error(data.error.message || 'API error');
+    }
+    const raw = (data.content || []).map(b => b.text || '').join(' ').trim() || "I'm not sure how to respond to that.";
+
+    memory.history.push({ role:'assistant', content: raw });
+    saveMemory();
+
+    const { spoken, actions } = parseActions(raw);
+    applyActions(actions);
+
+    addLine('jarvis', spoken || raw);
+    speak(spoken || raw);
+  }catch(err){
+    setState('idle');
+    const key = getApiKey();
+    const msg = !key
+      ? "I don't have an API key configured, sir. Add one in Settings, or run me inside Claude."
+      : "I couldn't reach the network just now, sir. Try again in a moment.";
+    addLine('jarvis', msg);
+  }
+}
+
+// ---------- Text to speech ----------
+let chosenVoice = null;
+function pickVoice(){
+  const voices = window.speechSynthesis.getVoices();
+  if(!voices.length) return null;
+  const preferred = voices.find(v => /Daniel|Arthur|Oliver|Ryan|George|UK English Male|Google UK English Male/i.test(v.name))
+    || voices.find(v => /en-GB/i.test(v.lang) && /male/i.test(v.name))
+    || voices.find(v => /en-GB/i.test(v.lang))
+    || voices.find(v => /male/i.test(v.name) && /en/i.test(v.lang))
+    || voices.find(v => /en/i.test(v.lang))
+    || voices[0];
+  return preferred;
+}
+window.speechSynthesis && (window.speechSynthesis.onvoiceschanged = () => { chosenVoice = pickVoice(); });
+
+function speak(text){
+  if(!('speechSynthesis' in window)){ setState('idle'); return; }
+  const utter = new SpeechSynthesisUtterance(text);
+  if(!chosenVoice) chosenVoice = pickVoice();
+  if(chosenVoice) utter.voice = chosenVoice;
+  utter.lang = (chosenVoice && chosenVoice.lang) || 'en-GB';
+  utter.rate = 1.0;
+  utter.pitch = 0.9;
+  setState('speaking');
+  utter.onend = () => setState('idle');
+  utter.onerror = () => setState('idle');
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utter);
+}
+
+// ================= CHESS COACH (vision-based) =================
+const chessDrawer = el('chessDrawer'), chessBtn = el('chessBtn'), closeChessDrawer = el('closeChessDrawer');
+const chessFileInput = el('chessFileInput'), chessUploadBtn = el('chessUploadBtn');
+const chessPreviewWrap = el('chessPreviewWrap'), chessPreview = el('chessPreview');
+const chessQuestion = el('chessQuestion'), chessAnalyzeBtn = el('chessAnalyzeBtn');
+const coachPanel = el('coachPanel');
+
+let uploadedImage = null; // { mediaType, base64 }
+
+chessBtn.onclick = () => { drawer.classList.remove('open'); tasksDrawer.classList.remove('open'); document.getElementById('settingsDrawer').classList.remove('open'); chessDrawer.classList.add('open'); };
+closeChessDrawer.onclick = () => chessDrawer.classList.remove('open');
+
+// ---------- Settings (API key) ----------
+const settingsBtn = el('settingsBtn'), settingsDrawer = el('settingsDrawer'), closeSettingsDrawer = el('closeSettingsDrawer');
+const apiKeyInput = el('apiKeyInput'), saveKeyBtn = el('saveKeyBtn'), clearKeyBtn = el('clearKeyBtn'), keyStatus = el('keyStatus');
+
+function refreshKeyStatus(){
+  const key = getApiKey();
+  apiKeyInput.value = key;
+  keyStatus.textContent = key
+    ? 'A key is saved in this browser. Standalone mode active.'
+    : "No key saved — using Claude's built-in access (works only inside Claude).";
+}
+settingsBtn.onclick = () => {
+  drawer.classList.remove('open'); tasksDrawer.classList.remove('open'); chessDrawer.classList.remove('open');
+  refreshKeyStatus();
+  settingsDrawer.classList.add('open');
+};
+closeSettingsDrawer.onclick = () => settingsDrawer.classList.remove('open');
+saveKeyBtn.onclick = () => {
+  try{ localStorage.setItem('jarvis-api-key', apiKeyInput.value.trim()); }catch(e){}
+  refreshKeyStatus();
+};
+clearKeyBtn.onclick = () => {
+  try{ localStorage.removeItem('jarvis-api-key'); }catch(e){}
+  refreshKeyStatus();
+};
+
+chessUploadBtn.onclick = () => chessFileInput.click();
+
+chessFileInput.addEventListener('change', () => {
+  const file = chessFileInput.files && chessFileInput.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = reader.result;
+    const base64 = dataUrl.split(',')[1];
+    uploadedImage = { mediaType: file.type || 'image/png', base64 };
+    chessPreview.src = dataUrl;
+    chessPreviewWrap.style.display = 'block';
+    chessAnalyzeBtn.disabled = false;
+    coachPanel.innerHTML = '<div class="empty">Position loaded. Tap Analyze when ready.</div>';
+  };
+  reader.readAsDataURL(file);
+});
+
+chessAnalyzeBtn.onclick = analyzePosition;
+chessQuestion.addEventListener('keydown', e => { if(e.key === 'Enter' && !chessAnalyzeBtn.disabled) analyzePosition(); });
+
+async function analyzePosition(){
+  if(!uploadedImage) return;
+  chessAnalyzeBtn.disabled = true;
+  coachPanel.innerHTML = '<div class="empty">Reading the board…</div>';
+
+  const userNote = chessQuestion.value.trim();
+  const coachSystem = `You are Jarvis, an expert chess coach. The user will show you a screenshot of a chess position — from an app, a website, or a photo of a physical board. Read the position carefully first (whose move it is, if indicated; otherwise infer or state your assumption), then give genuinely useful coaching: assess the position in plain terms, point out the key tactical or strategic idea, and suggest a concrete move or plan — as if talking to a club-level player who wants to improve. If the image is unclear or you're not fully certain of a piece's location, say so briefly rather than guessing silently. Write for reading on screen: a few short paragraphs, plain text, no markdown headers. Tone is Jarvis from the Iron Man films — a dry-witted British butler-scientist who addresses the user as "sir" and isn't shy about a deadpan remark on a truly questionable move, but never at the expense of actually useful coaching.`;
+
+  const userText = userNote
+    ? `Here is the position. ${userNote}`
+    : "Here is the position. What's the best move and why?";
+
+  try{
+    const response = await callClaude({
+      max_tokens: 700,
+      system: coachSystem,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: uploadedImage.mediaType, data: uploadedImage.base64 } },
+          { type: 'text', text: userText }
+        ]
+      }]
+    });
+    const data = await response.json();
+    if(data.error){ throw new Error(data.error.message || 'API error'); }
+    const reply = (data.content || []).map(b => b.text || '').join(' ').trim() || "I couldn't get a clear read on that image — try a clearer or more zoomed-in screenshot.";
+    coachPanel.textContent = reply;
+  }catch(e){
+    const key = getApiKey();
+    const msg = !key
+      ? "No API key configured, sir. Add one in Settings, or run me inside Claude."
+      : "Couldn't reach the network for analysis. Try again in a moment.";
+    coachPanel.innerHTML = `<div class="empty">${msg}</div>`;
+  }
+  chessAnalyzeBtn.disabled = false;
+}
+
+
+buildHUD();
+loadMemory();
+initRecognition();
+setState('idle');
+</script>
+</body>
+</html>
