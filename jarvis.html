@@ -741,7 +741,7 @@ function initRecognition(){
       if(e.results[i].isFinal) finalTranscript += t;
       else interim += t;
     }
-    statusLabel.textContent = (finalTranscript + interim).slice(0,40) || 'LISTENING';
+    // (interim words intentionally not displayed)
   };
 
   recognition.onend = () => {
@@ -866,8 +866,8 @@ Today's date: ${new Date().toLocaleDateString('en-US', { weekday:'long', year:'n
       messages: memory.history
     });
     const data = await response.json();
-    if(data.error){
-      throw new Error(data.error.message || 'API error');
+    if(data.error || !response.ok){
+      throw new Error((data.error && data.error.message) || ('HTTP ' + response.status));
     }
     const raw = (data.content || []).map(b => b.text || '').join(' ').trim() || "I'm not sure how to respond to that.";
 
@@ -882,10 +882,19 @@ Today's date: ${new Date().toLocaleDateString('en-US', { weekday:'long', year:'n
   }catch(err){
     setState('idle');
     const key = getApiKey();
-    const msg = !key
-      ? "I don't have an API key configured, sir. Add one in Settings, or run me inside Claude."
-      : "I couldn't reach the network just now, sir. Try again in a moment.";
+    const errText = (err && err.message) || '';
+    let msg;
+    if(!key){
+      msg = "I don't have an API key configured, sir. Add one in Settings, or run me inside Claude.";
+    } else if(/401|authent|invalid.*key|x-api-key/i.test(errText)){
+      msg = "That API key doesn't seem to be working, sir. Please check it in Settings.";
+    } else if(/credit|billing|quota/i.test(errText)){
+      msg = "It looks like there's a billing or credit issue on the API account, sir.";
+    } else {
+      msg = "I couldn't reach the network just now, sir. Try again in a moment.";
+    }
     addLine('jarvis', msg);
+    speak(msg);
   }
 }
 
@@ -1003,14 +1012,24 @@ async function analyzePosition(){
       }]
     });
     const data = await response.json();
-    if(data.error){ throw new Error(data.error.message || 'API error'); }
+    if(data.error || !response.ok){
+      throw new Error((data.error && data.error.message) || ('HTTP ' + response.status));
+    }
     const reply = (data.content || []).map(b => b.text || '').join(' ').trim() || "I couldn't get a clear read on that image — try a clearer or more zoomed-in screenshot.";
     coachPanel.textContent = reply;
   }catch(e){
     const key = getApiKey();
-    const msg = !key
-      ? "No API key configured, sir. Add one in Settings, or run me inside Claude."
-      : "Couldn't reach the network for analysis. Try again in a moment.";
+    const errText = (e && e.message) || '';
+    let msg;
+    if(!key){
+      msg = "No API key configured, sir. Add one in Settings, or run me inside Claude.";
+    } else if(/401|authent|invalid.*key|x-api-key/i.test(errText)){
+      msg = "That API key doesn't seem to be working, sir. Check it in Settings.";
+    } else if(/credit|billing|quota/i.test(errText)){
+      msg = "There's a billing or credit issue on the API account, sir.";
+    } else {
+      msg = "Couldn't reach the network for analysis. Try again in a moment.";
+    }
     coachPanel.innerHTML = `<div class="empty">${msg}</div>`;
   }
   chessAnalyzeBtn.disabled = false;
