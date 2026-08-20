@@ -303,6 +303,7 @@
         <button id="clearKeyBtn" class="coach-btn" style="background:transparent; border:1px solid var(--line); color:var(--text-mute);">Clear</button>
       </div>
       <p class="desc" id="keyStatus" style="margin-top:14px;"></p>
+      <p class="desc" id="voiceStatus" style="margin-top:6px;"></p>
     </div>
   </div>
 
@@ -921,7 +922,10 @@ let chosenVoice = null;
 function pickVoice(){
   const voices = window.speechSynthesis.getVoices();
   if(!voices.length) return null;
-  const preferred = voices.find(v => /Daniel|Arthur|Oliver|Ryan|George|UK English Male|Google UK English Male/i.test(v.name))
+  const isBritishName = v => /Daniel|Arthur|Oliver|Ryan|George|UK English Male|Google UK English Male/i.test(v.name);
+  const isHighQuality = v => /enhanced|premium|neural/i.test(v.name);
+  const preferred = voices.find(v => isBritishName(v) && isHighQuality(v))   // e.g. "Daniel (Enhanced)" — best case
+    || voices.find(v => isBritishName(v))                                    // any Daniel/Arthur/etc, even default quality
     || voices.find(v => /en-GB/i.test(v.lang) && /male/i.test(v.name))
     || voices.find(v => /en-GB/i.test(v.lang))
     || voices.find(v => /male/i.test(v.name) && /en/i.test(v.lang))
@@ -962,6 +966,7 @@ closeChessDrawer.onclick = () => chessDrawer.classList.remove('open');
 // ---------- Settings (API key) ----------
 const settingsBtn = el('settingsBtn'), settingsDrawer = el('settingsDrawer'), closeSettingsDrawer = el('closeSettingsDrawer');
 const apiKeyInput = el('apiKeyInput'), saveKeyBtn = el('saveKeyBtn'), clearKeyBtn = el('clearKeyBtn'), keyStatus = el('keyStatus');
+const voiceStatus = el('voiceStatus');
 
 function refreshKeyStatus(){
   const key = getApiKey();
@@ -969,6 +974,10 @@ function refreshKeyStatus(){
   keyStatus.textContent = key
     ? 'A key is saved in this browser. Standalone mode active.'
     : "No key saved — using Claude's built-in access (works only inside Claude).";
+  if(!chosenVoice) chosenVoice = pickVoice();
+  voiceStatus.textContent = chosenVoice
+    ? `Voice in use: ${chosenVoice.name} (${chosenVoice.lang})`
+    : 'Voice: not yet loaded — try reopening this panel in a moment.';
 }
 settingsBtn.onclick = () => {
   drawer.classList.remove('open'); tasksDrawer.classList.remove('open'); chessDrawer.classList.remove('open');
