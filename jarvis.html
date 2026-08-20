@@ -304,6 +304,14 @@
       </div>
       <p class="desc" id="keyStatus" style="margin-top:14px;"></p>
       <p class="desc" id="voiceStatus" style="margin-top:6px;"></p>
+
+      <p class="desc" style="margin-top:20px; border-top:1px solid var(--line); padding-top:16px;">Set a location so Jarvis can answer weather questions — free, no key needed.</p>
+      <input type="text" id="cityInput" placeholder="e.g. Miami, FL" style="width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text); padding:10px 12px; border-radius:9px; font-family:'Inter',sans-serif; font-size:12.5px; outline:none; box-sizing:border-box;" />
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button id="saveCityBtn" class="coach-btn" style="flex:1;">Save City</button>
+        <button id="useDeviceLocBtn" class="coach-btn" style="background:transparent; border:1px solid var(--line); color:var(--text-mute);">Use Device Location</button>
+      </div>
+      <p class="desc" id="locationStatus" style="margin-top:10px;"></p>
     </div>
   </div>
 
@@ -420,6 +428,80 @@ async function callClaude(bodyWithoutModel){
     headers,
     body: JSON.stringify(body)
   });
+}
+
+// ---------- Weather (Open-Meteo — free, no API key required) ----------
+const LOCATION_KEY = 'jarvis-location-v1';
+const WMO_DESC = {
+  0:'clear sky', 1:'mainly clear', 2:'partly cloudy', 3:'overcast',
+  45:'foggy', 48:'foggy with rime', 51:'light drizzle', 53:'drizzle', 55:'heavy drizzle',
+  56:'freezing drizzle', 57:'heavy freezing drizzle',
+  61:'light rain', 63:'rain', 65:'heavy rain', 66:'freezing rain', 67:'heavy freezing rain',
+  71:'light snow', 73:'snow', 75:'heavy snow', 77:'snow grains',
+  80:'light rain showers', 81:'rain showers', 82:'violent rain showers',
+  85:'snow showers', 86:'heavy snow showers',
+  95:'thunderstorms', 96:'thunderstorms with hail', 99:'thunderstorms with heavy hail'
+};
+let weatherCache = null; // { text, fetchedAt }
+
+function getLocation(){
+  try{
+    const raw = localStorage.getItem(LOCATION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function setLocation(loc){
+  try{ localStorage.setItem(LOCATION_KEY, JSON.stringify(loc)); }catch(e){}
+}
+
+async function geocodeCity(name){
+  const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1`);
+  const data = await res.json();
+  if(data.results && data.results.length){
+    const r = data.results[0];
+    const label = [r.name, r.admin1, r.country].filter(Boolean).join(', ');
+    return { lat: r.latitude, lon: r.longitude, label };
+  }
+  return null;
+}
+
+function getDeviceLocation(){
+  return new Promise((resolve, reject) => {
+    if(!navigator.geolocation) return reject(new Error('Geolocation not supported'));
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, label: 'your current location' }),
+      err => reject(err),
+      { timeout: 8000 }
+    );
+  });
+}
+
+async function fetchWeatherText(){
+  const loc = getLocation();
+  if(!loc) return null;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}` +
+    `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m` +
+    `&daily=temperature_2m_max,temperature_2m_min,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('weather fetch failed');
+  const data = await res.json();
+  const c = data.current, d = data.daily;
+  const desc = WMO_DESC[c.weather_code] || 'unclear conditions';
+  return `Near ${loc.label}: currently ${Math.round(c.temperature_2m)}°F (feels like ${Math.round(c.apparent_temperature)}°F), ${desc}, humidity ${c.relative_humidity_2m}%, wind ${Math.round(c.wind_speed_10m)} mph. Today's range: ${Math.round(d.temperature_2m_min[0])}°F to ${Math.round(d.temperature_2m_max[0])}°F.`;
+}
+
+async function ensureWeatherFresh(){
+  const loc = getLocation();
+  if(!loc) return null;
+  const stale = !weatherCache || (Date.now() - weatherCache.fetchedAt) > 20*60*1000;
+  if(!stale) return weatherCache.text;
+  try{
+    const text = await fetchWeatherText();
+    weatherCache = { text, fetchedAt: Date.now() };
+  }catch(e){
+    if(!weatherCache) weatherCache = { text: null, fetchedAt: Date.now() };
+  }
+  return weatherCache.text;
 }
 
 const MEM_KEY = 'jarvis-memory-v1';
@@ -848,6 +930,9 @@ async function handleQuery(question){
     ? memory.tasks.map(t => `- [${t.id}] ${t.text}`).join('\n')
     : '(no tasks currently)';
 
+  const weatherText = await ensureWeatherFresh();
+  const weatherBlock = weatherText || '(no location set — see Settings to add one for weather)';
+
   const systemPrompt = `You are Jarvis, the user's personal voice assistant, inspired by the AI from the Iron Man films: a brilliant British butler-scientist with a dry, deadpan wit. You are unfailingly competent and impeccably polite, but you have a real personality — subtle sarcasm, understatement, and a knack for a perfectly-timed dry remark, the way Jarvis needles Tony Stark without ever being unhelpful or mean. Think raised-eyebrow humor, not slapstick.
 Guidelines for the wit:
 - Let it come through in word choice and understatement rather than forced jokes — e.g. calling a terrible idea "an option" or a 6am gym session "an ambitious choice, sir."
@@ -866,6 +951,9 @@ ${factsBlock}
 
 Current tasks/reminders (each has an id in brackets):
 ${tasksBlock}
+
+Current weather (may be unavailable if the user hasn't set a location):
+${weatherBlock}
 
 You can manage the task list. This is the ONLY mechanism that changes it — do not just say you added or removed something without emitting the matching line below, or nothing will actually happen.
 - When the user asks you to remember, add, or remind them of a task, write your short spoken confirmation, then on its own new line write exactly:
@@ -982,6 +1070,7 @@ function refreshKeyStatus(){
 settingsBtn.onclick = () => {
   drawer.classList.remove('open'); tasksDrawer.classList.remove('open'); chessDrawer.classList.remove('open');
   refreshKeyStatus();
+  refreshLocationStatus();
   settingsDrawer.classList.add('open');
 };
 closeSettingsDrawer.onclick = () => settingsDrawer.classList.remove('open');
@@ -992,6 +1081,45 @@ saveKeyBtn.onclick = () => {
 clearKeyBtn.onclick = () => {
   try{ localStorage.removeItem('jarvis-api-key'); }catch(e){}
   refreshKeyStatus();
+};
+
+// ---------- Settings (Location / weather) ----------
+const cityInput = el('cityInput'), saveCityBtn = el('saveCityBtn'), useDeviceLocBtn = el('useDeviceLocBtn'), locationStatus = el('locationStatus');
+
+function refreshLocationStatus(){
+  const loc = getLocation();
+  cityInput.value = loc ? loc.label : '';
+  locationStatus.textContent = loc
+    ? `Location set: ${loc.label}. Weather refreshes automatically.`
+    : 'No location set yet — weather questions won\u2019t work until you add one.';
+}
+saveCityBtn.onclick = async () => {
+  const name = cityInput.value.trim();
+  if(!name) return;
+  locationStatus.textContent = 'Looking that up…';
+  try{
+    const loc = await geocodeCity(name);
+    if(loc){
+      setLocation(loc);
+      weatherCache = null; // force refresh
+      refreshLocationStatus();
+    } else {
+      locationStatus.textContent = "Couldn't find that place, sir — try a bigger nearby city.";
+    }
+  }catch(e){
+    locationStatus.textContent = 'Lookup failed — check your connection and try again.';
+  }
+};
+useDeviceLocBtn.onclick = async () => {
+  locationStatus.textContent = 'Requesting device location…';
+  try{
+    const loc = await getDeviceLocation();
+    setLocation(loc);
+    weatherCache = null;
+    refreshLocationStatus();
+  }catch(e){
+    locationStatus.textContent = 'Could not get device location — check location permissions, or type a city instead.';
+  }
 };
 
 chessUploadBtn.onclick = () => chessFileInput.click();
