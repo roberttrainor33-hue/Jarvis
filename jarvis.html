@@ -918,7 +918,8 @@ async function handleQuery(question){
   addLine('user', question);
   setState('thinking');
 
-  memory.history.push({ role:'user', content: question });
+  const nowStamp = new Date().toLocaleString('en-US', { weekday:'long', month:'long', day:'numeric', hour:'numeric', minute:'2-digit' });
+  memory.history.push({ role:'user', content: `[${nowStamp}] ${question}` });
   if(memory.history.length > 16) memory.history = memory.history.slice(-16);
   saveMemory();
 
@@ -964,7 +965,8 @@ ACTION: {"type":"complete_task","id":"<the matching id>"}
 - Only include an ACTION line when the request genuinely requires changing the task list. Never mention the word ACTION, ids, or JSON in your spoken sentence itself — write it as if only the sentence will be read aloud.
 - If the user references a task that doesn't clearly match anything in the list, ask them to clarify instead of guessing.
 
-Today's date: ${new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}`;
+Right now it is: ${nowStamp}, ${new Date().getFullYear()}. This is the ONLY reliable source for the current date and time.
+Older messages in the conversation above are each tagged with the date/time they were actually sent, in brackets like "[Tuesday, August 18, 9:14 PM]" — those tags tell you when that message happened, not what's true today. Never assume something discussed on a previous day still applies now (a schedule mentioned Tuesday does not mean today is Tuesday). Always work out today's actual day of the week from the "Right now it is" line above, then match it against any recurring schedule in the facts, rather than copying a day mentioned in an older message.`;
 
   try{
     const response = await callClaude({
@@ -978,7 +980,7 @@ Today's date: ${new Date().toLocaleDateString('en-US', { weekday:'long', year:'n
     }
     const raw = (data.content || []).map(b => b.text || '').join(' ').trim() || "I'm not sure how to respond to that.";
 
-    memory.history.push({ role:'assistant', content: raw });
+    memory.history.push({ role:'assistant', content: `[${nowStamp}] ${raw}` });
     saveMemory();
 
     const { spoken, actions } = parseActions(raw);
