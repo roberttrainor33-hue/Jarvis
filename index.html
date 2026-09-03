@@ -510,13 +510,15 @@ function initRecognition(){
   if(!SR){ speechSupported = false; return null; }
   speechSupported = true;
 
+  // Deliberately NOT touching/aborting any previous instance here. By the time the user
+  // taps again, that instance has already finished naturally (onend already fired), and
+  // calling .abort() on an already-finished recognizer appears to leave iOS's underlying
+  // microphone session in a bad state for the *next* one — silently capturing no audio
+  // at all rather than throwing an error. Just detach our reference and let it go.
   if(recognition){
-    try{
-      recognition.onend = null;
-      recognition.onresult = null;
-      recognition.onerror = null;
-      recognition.abort();
-    }catch(e){ /* previous instance already dead — fine */ }
+    recognition.onend = null;
+    recognition.onresult = null;
+    recognition.onerror = null;
   }
 
   recognition = new SR();
