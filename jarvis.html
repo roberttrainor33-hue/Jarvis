@@ -581,7 +581,22 @@ function unlockAudio(){
   audioUnlocked = true;
 }
 
-function startListening(retried){
+async function startListening(retried){
+  // "Prime" the microphone before handing off to SpeechRecognition. After playing audio
+  // through the <audio> element for ElevenLabs, iOS can leave the page's shared audio
+  // session configured for playback only — recognition.start() won't error, but the mic
+  // silently captures nothing. Briefly opening (and immediately closing) a raw mic stream
+  // forces iOS to reconfigure the session for recording before we actually start listening.
+  if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
+    }catch(micErr){
+      // If this fails, fall through and let SpeechRecognition's own permission
+      // request handle it as before — no need to block on it.
+    }
+  }
+
   try{
     recognition.start();
     setState('listening');
@@ -809,8 +824,21 @@ async function speak(text){
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      ttsAudio.onended = () => { setState('idle'); URL.revokeObjectURL(url); };
-      ttsAudio.onerror = () => { setState('idle'); URL.revokeObjectURL(url); };
+      const releaseAudio = () => {
+        setState('idle');
+        URL.revokeObjectURL(url);
+        // Fully let go of the audio element after playback — on iOS, leaving an <audio>
+        // element holding a source can keep the page's shared audio session locked in
+        // "playback" mode, silently preventing the microphone from capturing anything
+        // on the next listen attempt even though no error is thrown.
+        try{
+          ttsAudio.pause();
+          ttsAudio.removeAttribute('src');
+          ttsAudio.load();
+        }catch(cleanupErr){ /* ignore */ }
+      };
+      ttsAudio.onended = releaseAudio;
+      ttsAudio.onerror = releaseAudio;
       ttsAudio.src = url;
       await ttsAudio.play();
       lastElevenError = null;
