@@ -383,8 +383,18 @@ function closeAllDrawers(){
   settingsDrawer.classList.remove('open');
 }
 
+let stateWatchdog = null;
 function setState(s){
   state = s; // the 3D scene reads this directly every frame
+  if(stateWatchdog) clearTimeout(stateWatchdog);
+  if(s !== 'idle'){
+    // Safety net: if anything hangs (a stuck recognition object, a stalled network
+    // request, an audio element that never fires onended), don't let the app stay
+    // permanently unresponsive — force back to idle after a generous timeout.
+    stateWatchdog = setTimeout(() => {
+      if(state !== 'idle') setState('idle');
+    }, 25000);
+  }
 }
 
 // ---------- Storage ----------
@@ -492,10 +502,23 @@ closeSettingsDrawer.onclick = () => settingsDrawer.classList.remove('open');
 keyboardBtn.onclick = () => { typebar.classList.toggle('open'); if(typebar.classList.contains('open')) textInput.focus(); };
 
 // ---------- Speech recognition ----------
+// iOS Safari's SpeechRecognition often only works reliably once per instance — reusing
+// the same object for a second listen can fail silently or leave things stuck. So we
+// build a brand new instance immediately before every single listen, not just the first.
 function initRecognition(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR){ speechSupported = false; return null; }
   speechSupported = true;
+
+  if(recognition){
+    try{
+      recognition.onend = null;
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.abort();
+    }catch(e){ /* previous instance already dead — fine */ }
+  }
+
   recognition = new SR();
   recognition.lang = 'en-US';
   recognition.interimResults = true;
@@ -553,11 +576,9 @@ sceneWrap.addEventListener('click', () => {
   unlockAudio();
   if(state === 'listening'){ recognition && recognition.stop(); return; }
   if(state !== 'idle') return;
-  if(!speechSupported){
-    if(!initRecognition()){
-      speak("Voice input isn't supported in this browser, sir. Try Chrome or Edge, or type your question instead.");
-      return;
-    }
+  if(!initRecognition()){
+    speak("Voice input isn't supported in this browser, sir. Try Chrome or Edge, or type your question instead.");
+    return;
   }
   try{
     recognition.start();
@@ -1151,7 +1172,6 @@ useVoiceIdBtn.onclick = async () => {
 
 // ---------- init ----------
 loadMemory();
-initRecognition();
 setState('idle');
 </script>
 </body>
