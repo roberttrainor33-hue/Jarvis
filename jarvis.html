@@ -176,7 +176,7 @@
       <p class="desc" id="keyStatus" style="margin-top:14px;"></p>
       <p class="desc" id="voiceStatus" style="margin-top:6px;"></p>
 
-      <p class="desc" style="margin-top:20px; border-top:1px solid var(--line); padding-top:16px;">Optional: use ElevenLabs for a much more natural voice instead of the browser default. Get a key at elevenlabs.io.</p>
+      <p class="desc" style="margin-top:20px; border-top:1px solid var(--line); padding-top:16px;">Optional: use ElevenLabs for a much more natural voice instead of the browser default. Get a key at elevenlabs.io. Note: free ElevenLabs accounts can only use their own default voices via the API, not shared Voice Library voices — this list only shows ones that will actually work on your plan.</p>
       <input type="password" id="elevenKeyInput" placeholder="ElevenLabs API key" style="width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text); padding:10px 12px; border-radius:9px; font-family:'JetBrains Mono',monospace; font-size:12px; outline:none; box-sizing:border-box;" />
       <div style="display:flex; gap:8px; margin-top:10px;">
         <button id="saveElevenKeyBtn" class="coach-btn" style="flex:1;">Save &amp; Load Voices</button>
@@ -185,7 +185,7 @@
       <select id="elevenVoiceSelect" style="width:100%; margin-top:10px; background:var(--panel-2); border:1px solid var(--line); color:var(--text); padding:10px 12px; border-radius:9px; font-family:'Inter',sans-serif; font-size:12.5px; display:none;"></select>
       <p class="desc" id="elevenStatus" style="margin-top:10px;"></p>
 
-      <p class="desc" style="margin-top:12px;">Or paste a voice ID / voice page link from ElevenLabs directly — works even for Voice Library voices you haven't added to your account:</p>
+      <p class="desc" style="margin-top:12px;">Or paste a voice ID / voice page link directly — useful for your own cloned voices, or Voice Library voices if you're on a paid ElevenLabs plan (free accounts can't use Voice Library voices via the API):</p>
       <input type="text" id="voiceIdInput" placeholder="Voice ID or https://elevenlabs.io/... link" style="width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text); padding:10px 12px; border-radius:9px; font-family:'JetBrains Mono',monospace; font-size:12px; outline:none; box-sizing:border-box;" />
       <button id="useVoiceIdBtn" class="coach-btn" style="width:100%; margin-top:8px;">Use This Voice</button>
 
@@ -726,8 +726,10 @@ function speakBrowser(text){
 }
 
 // ---------- ElevenLabs (optional premium voice upgrade) ----------
-const DEFAULT_ELEVEN_VOICE_ID = 'bVsj1k2UCjmStPeev30q'; // Justin — chatty, confident British male
+// (No hardcoded default voice — free-tier accounts can only use their own "premade"/cloned
+// voices via the API, not shared Voice Library voices, so we always pick from what's actually usable.)
 const ttsAudio = new Audio();
+let lastElevenError = null;
 function getElevenKey(){
   try{ return (localStorage.getItem('jarvis-eleven-key') || '').trim(); }catch(e){ return ''; }
 }
@@ -755,16 +757,27 @@ async function speak(text){
           voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.3, use_speaker_boost: true }
         })
       });
-      if(!res.ok) throw new Error('ElevenLabs request failed: ' + res.status);
+      if(!res.ok){
+        let detail = '';
+        try{
+          const errJson = await res.json();
+          detail = (errJson && errJson.detail && (errJson.detail.message || errJson.detail)) || '';
+        }catch(parseErr){}
+        throw new Error(`HTTP ${res.status}${detail ? ': ' + detail : ''}`);
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       ttsAudio.onended = () => { setState('idle'); URL.revokeObjectURL(url); };
       ttsAudio.onerror = () => { setState('idle'); URL.revokeObjectURL(url); };
       ttsAudio.src = url;
       await ttsAudio.play();
+      lastElevenError = null;
       return;
     }catch(e){
-      // fall through to the free browser voice
+      // Fall through to the free browser voice, but record why so it's visible in Settings
+      // next time — otherwise this fails completely silently.
+      lastElevenError = (e && e.message) ? e.message : 'unknown error';
+      try{ elevenStatus.textContent = `Last speech attempt failed — ${lastElevenError}`; }catch(_){}
     }
   }
   speakBrowser(text);
@@ -837,14 +850,17 @@ useDeviceLocBtn.onclick = async () => {
 const elevenKeyInput = el('elevenKeyInput'), saveElevenKeyBtn = el('saveElevenKeyBtn'), clearElevenKeyBtn = el('clearElevenKeyBtn');
 const elevenVoiceSelect = el('elevenVoiceSelect'), elevenStatus = el('elevenStatus');
 
-function refreshElevenStatus(){
+async function refreshElevenStatus(){
   const key = getElevenKey();
   elevenKeyInput.value = key;
   if(key){
-    loadElevenVoices();
+    await loadElevenVoices();
   } else {
     elevenVoiceSelect.style.display = 'none';
     elevenStatus.textContent = 'No ElevenLabs key saved — using the free browser voice.';
+  }
+  if(lastElevenError){
+    elevenStatus.textContent += ` | Last speech attempt failed: ${lastElevenError}`;
   }
 }
 
@@ -854,35 +870,50 @@ async function loadElevenVoices(){
   elevenStatus.textContent = 'Loading voices…';
   try{
     const res = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
+    if(!res.ok){
+      let detail = '';
+      try{
+        const errJson = await res.json();
+        detail = (errJson && errJson.detail && (errJson.detail.message || errJson.detail)) || '';
+      }catch(parseErr){ /* body wasn't JSON — ignore */ }
+      throw new Error(`HTTP ${res.status}${detail ? ': ' + detail : ''}`);
+    }
     const data = await res.json();
-    const voices = data.voices || [];
+    const allVoices = data.voices || [];
+    // Voice Library (community) voices don't work via the API on ElevenLabs' free tier —
+    // only "premade" (their own default set) and any voice you've actually cloned yourself do.
+    // Filter to what will actually work, so nothing in this list can silently fail.
+    const usableVoices = allVoices.filter(v => v.category === 'premade' || v.category === 'cloned' || v.category === 'professional');
+    const hiddenCount = allVoices.length - usableVoices.length;
+
     elevenVoiceSelect.innerHTML = '';
-    voices.forEach(v => {
+    usableVoices.forEach(v => {
       const opt = document.createElement('option');
       opt.value = v.voice_id;
       opt.textContent = v.name;
       elevenVoiceSelect.appendChild(opt);
     });
     const savedId = getElevenVoiceId();
-    const matchInList = voices.find(v => v.voice_id === savedId);
-    elevenVoiceSelect.style.display = voices.length ? 'block' : 'none';
+    const matchInList = usableVoices.find(v => v.voice_id === savedId);
+    elevenVoiceSelect.style.display = usableVoices.length ? 'block' : 'none';
+
+    const hiddenNote = hiddenCount ? ` (${hiddenCount} Voice Library voice${hiddenCount === 1 ? '' : 's'} hidden — needs a paid plan to use via API)` : '';
 
     if(savedId && matchInList){
       elevenVoiceSelect.value = savedId;
-      elevenStatus.textContent = `${voices.length} voices loaded. Active: ${matchInList.name}.`;
-    } else if(savedId && !matchInList){
-      const label = savedId === DEFAULT_ELEVEN_VOICE_ID ? 'Justin (default)' : 'set manually, not in this list';
-      elevenStatus.textContent = `${voices.length} voices loaded. Active voice: ${label}.`;
+      elevenStatus.textContent = `${usableVoices.length} usable voices loaded. Active: ${matchInList.name}.${hiddenNote}`;
+    } else if(usableVoices.length){
+      // Nothing usable currently selected — default to the first free-tier-compatible voice
+      localStorage.setItem('jarvis-eleven-voice', usableVoices[0].voice_id);
+      elevenVoiceSelect.value = usableVoices[0].voice_id;
+      elevenStatus.textContent = `${usableVoices.length} usable voices loaded. Active: ${usableVoices[0].name} (default).${hiddenNote}`;
     } else {
-      localStorage.setItem('jarvis-eleven-voice', DEFAULT_ELEVEN_VOICE_ID);
-      const justinInList = voices.find(v => v.voice_id === DEFAULT_ELEVEN_VOICE_ID);
-      if(justinInList) elevenVoiceSelect.value = DEFAULT_ELEVEN_VOICE_ID;
-      elevenStatus.textContent = `${voices.length} voices loaded. Active: ${justinInList ? justinInList.name : 'Justin'} (default).`;
+      elevenStatus.textContent = `No free-tier-compatible voices found on this account.${hiddenNote}`;
     }
   }catch(e){
     elevenVoiceSelect.style.display = 'none';
-    elevenStatus.textContent = "Couldn't load voices — check that the key is correct.";
+    const detail = (e && e.message) ? e.message : 'unknown error';
+    elevenStatus.textContent = `Couldn't load voices — ${detail}`;
   }
 }
 
@@ -934,12 +965,20 @@ useVoiceIdBtn.onclick = async () => {
   elevenStatus.textContent = 'Checking that voice…';
   try{
     const res = await fetch(`https://api.elevenlabs.io/v1/voices/${id}`, { headers: { 'xi-api-key': key } });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
+    if(!res.ok){
+      let detail = '';
+      try{
+        const errJson = await res.json();
+        detail = (errJson && errJson.detail && (errJson.detail.message || errJson.detail)) || '';
+      }catch(parseErr){}
+      throw new Error(`HTTP ${res.status}${detail ? ': ' + detail : ''}`);
+    }
     const data = await res.json();
     localStorage.setItem('jarvis-eleven-voice', id);
     elevenStatus.textContent = `Active voice: ${data.name || id} (set manually).`;
   }catch(e){
-    elevenStatus.textContent = "Couldn't find that voice — double check the ID or link, and that your key has access to it.";
+    const detail = (e && e.message) ? e.message : 'unknown error';
+    elevenStatus.textContent = `Couldn't find that voice — ${detail}`;
   }
 };
 
