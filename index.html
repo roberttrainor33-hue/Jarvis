@@ -854,7 +854,14 @@ async function loadElevenVoices(){
   elevenStatus.textContent = 'Loading voices…';
   try{
     const res = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
+    if(!res.ok){
+      let detail = '';
+      try{
+        const errJson = await res.json();
+        detail = (errJson && errJson.detail && (errJson.detail.message || errJson.detail)) || '';
+      }catch(parseErr){ /* body wasn't JSON — ignore */ }
+      throw new Error(`HTTP ${res.status}${detail ? ': ' + detail : ''}`);
+    }
     const data = await res.json();
     const voices = data.voices || [];
     elevenVoiceSelect.innerHTML = '';
@@ -882,7 +889,11 @@ async function loadElevenVoices(){
     }
   }catch(e){
     elevenVoiceSelect.style.display = 'none';
-    elevenStatus.textContent = "Couldn't load voices — check that the key is correct.";
+    // Show the real failure reason instead of a generic guess.
+    // A "Failed to fetch" / TypeError here (no HTTP status) usually means a network or CORS
+    // block rather than a bad key — worth knowing which one we're looking at.
+    const detail = (e && e.message) ? e.message : 'unknown error';
+    elevenStatus.textContent = `Couldn't load voices — ${detail}`;
   }
 }
 
@@ -934,12 +945,20 @@ useVoiceIdBtn.onclick = async () => {
   elevenStatus.textContent = 'Checking that voice…';
   try{
     const res = await fetch(`https://api.elevenlabs.io/v1/voices/${id}`, { headers: { 'xi-api-key': key } });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
+    if(!res.ok){
+      let detail = '';
+      try{
+        const errJson = await res.json();
+        detail = (errJson && errJson.detail && (errJson.detail.message || errJson.detail)) || '';
+      }catch(parseErr){}
+      throw new Error(`HTTP ${res.status}${detail ? ': ' + detail : ''}`);
+    }
     const data = await res.json();
     localStorage.setItem('jarvis-eleven-voice', id);
     elevenStatus.textContent = `Active voice: ${data.name || id} (set manually).`;
   }catch(e){
-    elevenStatus.textContent = "Couldn't find that voice — double check the ID or link, and that your key has access to it.";
+    const detail = (e && e.message) ? e.message : 'unknown error';
+    elevenStatus.textContent = `Couldn't find that voice — ${detail}`;
   }
 };
 
