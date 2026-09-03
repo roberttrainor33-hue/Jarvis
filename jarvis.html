@@ -394,6 +394,10 @@ function setState(s){
     stateWatchdog = setTimeout(() => {
       if(state !== 'idle') setState('idle');
     }, 25000);
+  } else if(hasEverListened){
+    // Quietly try to keep the mic "warm" and ready in the background once we're back
+    // to idle, rather than waiting until the next tap to re-acquire it.
+    ensureRecognitionRunning();
   }
 }
 
@@ -502,63 +506,98 @@ closeSettingsDrawer.onclick = () => settingsDrawer.classList.remove('open');
 keyboardBtn.onclick = () => { typebar.classList.toggle('open'); if(typebar.classList.contains('open')) textInput.focus(); };
 
 // ---------- Speech recognition ----------
-// iOS Safari's SpeechRecognition often only works reliably once per instance — reusing
-// the same object for a second listen can fail silently or leave things stuck. So we
-// build a brand new instance immediately before every single listen, not just the first.
-function initRecognition(){
+// Architecture note: earlier versions built a brand new SpeechRecognition instance and
+// called .start() fresh for every single question. On iOS, re-acquiring the microphone
+// that way is unreliable — it can fail outright ("audio-capture") or silently capture
+// nothing. So instead: build ONE recognition session with continuous:true and keep it
+// running in the background for as long as possible, across the whole conversation.
+// "Listening" vs "not listening" is now purely our own app-level flag (capturingTurn),
+// not the underlying engine being started and stopped over and over.
+let recognitionRunning = false;
+let capturingTurn = false;
+let turnTranscript = '';
+let silenceTimer = null;
+let hasEverListened = false;
+const SILENCE_MS = 1400; // pause length that counts as "done talking"
+
+function buildRecognition(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR){ speechSupported = false; return null; }
   speechSupported = true;
 
-  // Deliberately NOT touching/aborting any previous instance here. By the time the user
-  // taps again, that instance has already finished naturally (onend already fired), and
-  // calling .abort() on an already-finished recognizer appears to leave iOS's underlying
-  // microphone session in a bad state for the *next* one — silently capturing no audio
-  // at all rather than throwing an error. Just detach our reference and let it go.
-  if(recognition){
-    recognition.onend = null;
-    recognition.onresult = null;
-    recognition.onerror = null;
-  }
+  const r = new SR();
+  r.lang = 'en-US';
+  r.interimResults = true;
+  r.continuous = true;
 
-  recognition = new SR();
-  recognition.lang = 'en-US';
-  recognition.interimResults = true;
-  recognition.continuous = false;
-
-  let finalTranscript = '';
-
-  recognition.onresult = (e) => {
+  r.onresult = (e) => {
+    if(!capturingTurn) return; // ignore anything heard outside an active turn (e.g. Jarvis's own voice)
     for(let i = e.resultIndex; i < e.results.length; i++){
-      if(e.results[i].isFinal) finalTranscript += e.results[i][0].transcript;
+      if(e.results[i].isFinal) turnTranscript += e.results[i][0].transcript;
+    }
+    resetSilenceTimer();
+  };
+
+  r.onend = () => {
+    recognitionRunning = false;
+    if(capturingTurn){
+      // The engine stopped mid-turn (e.g. iOS closed it) — treat it as the end of what was said.
+      finalizeTurn();
+    }
+    // Try to quietly bring it back once we're idle, so it's ready before the next tap —
+    // but only once we've already been granted mic permission via a real user gesture.
+    if(hasEverListened && state === 'idle'){
+      ensureRecognitionRunning();
     }
   };
 
-  recognition.onend = () => {
-    if(finalTranscript.trim()){
-      const q = finalTranscript.trim();
-      finalTranscript = '';
-      handleQuery(q);
-    } else {
-      // Recognition ended with nothing captured — say so, rather than going silently
-      // back to idle, which looks identical to the app simply not responding at all.
-      setState('idle');
-      speak("Didn't catch that, sir. Try again.");
-    }
-  };
-
-  recognition.onerror = (e) => {
-    setState('idle');
+  r.onerror = (e) => {
     if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+      capturingTurn = false;
+      setState('idle');
       speak("I don't have microphone access, sir. Check your browser's permission settings, or type instead.");
-    } else if(e.error !== 'no-speech' && e.error !== 'aborted'){
-      // Temporary: announce every other error reason out loud so we can pin down
-      // exactly what's failing, instead of it disappearing silently.
+    } else if(e.error === 'no-speech' || e.error === 'aborted'){
+      // benign — continuous mode handles silence on its own
+    } else if(capturingTurn){
+      capturingTurn = false;
+      setState('idle');
       speak(`Recognition error, sir: ${e.error}.`);
     }
   };
 
-  return recognition;
+  return r;
+}
+
+function ensureRecognitionRunning(){
+  if(recognitionRunning) return true;
+  if(!recognition) recognition = buildRecognition();
+  if(!recognition) return false;
+  try{
+    recognition.start();
+    recognitionRunning = true;
+    return true;
+  }catch(err){
+    return false;
+  }
+}
+
+function resetSilenceTimer(){
+  if(silenceTimer) clearTimeout(silenceTimer);
+  silenceTimer = setTimeout(finalizeTurn, SILENCE_MS);
+}
+
+function finalizeTurn(){
+  if(!capturingTurn) return;
+  capturingTurn = false;
+  if(silenceTimer){ clearTimeout(silenceTimer); silenceTimer = null; }
+  const q = turnTranscript.trim();
+  turnTranscript = '';
+  if(q){
+    handleQuery(q);
+  } else {
+    setState('idle');
+    speak("Didn't catch that, sir. Try again.");
+  }
 }
 
 // ---------- iOS audio unlock ----------
@@ -581,32 +620,24 @@ function unlockAudio(){
   audioUnlocked = true;
 }
 
-function startListening(retried){
-  try{
-    recognition.start();
-    setState('listening');
-  }catch(err){
-    if(!retried){
-      // Starting an instance right after aborting the previous one can throw
-      // InvalidStateError on some WebKit builds if the native teardown hasn't
-      // finished yet — give it a brief moment then try exactly once more.
-      setTimeout(() => startListening(true), 250);
-    } else {
-      setState('idle');
-      speak(`Couldn't start listening, sir: ${(err && (err.message || err.name)) || 'unknown error'}.`);
-    }
-  }
-}
-
 sceneWrap.addEventListener('click', () => {
   unlockAudio();
-  if(state === 'listening'){ recognition && recognition.stop(); return; }
+  if(capturingTurn){
+    // Tapping again mid-turn means "I'm done talking" — end it now rather than waiting for silence.
+    finalizeTurn();
+    return;
+  }
   if(state !== 'idle') return;
-  if(!initRecognition()){
+  const ok = ensureRecognitionRunning();
+  hasEverListened = true;
+  if(!ok){
     speak("Voice input isn't supported in this browser, sir. Try Chrome or Edge, or type your question instead.");
     return;
   }
-  startListening(false);
+  capturingTurn = true;
+  turnTranscript = '';
+  setState('listening');
+  resetSilenceTimer();
 });
 
 // ---------- Text fallback ----------
