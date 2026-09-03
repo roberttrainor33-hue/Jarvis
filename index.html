@@ -581,22 +581,7 @@ function unlockAudio(){
   audioUnlocked = true;
 }
 
-async function startListening(retried){
-  // "Prime" the microphone before handing off to SpeechRecognition. After playing audio
-  // through the <audio> element for ElevenLabs, iOS can leave the page's shared audio
-  // session configured for playback only — recognition.start() won't error, but the mic
-  // silently captures nothing. Briefly opening (and immediately closing) a raw mic stream
-  // forces iOS to reconfigure the session for recording before we actually start listening.
-  if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-    try{
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(t => t.stop());
-    }catch(micErr){
-      // If this fails, fall through and let SpeechRecognition's own permission
-      // request handle it as before — no need to block on it.
-    }
-  }
-
+function startListening(retried){
   try{
     recognition.start();
     setState('listening');
