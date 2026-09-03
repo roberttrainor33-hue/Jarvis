@@ -728,6 +728,7 @@ function speakBrowser(text){
 // ---------- ElevenLabs (optional premium voice upgrade) ----------
 const DEFAULT_ELEVEN_VOICE_ID = 'bVsj1k2UCjmStPeev30q'; // Justin — chatty, confident British male
 const ttsAudio = new Audio();
+let lastElevenError = null;
 function getElevenKey(){
   try{ return (localStorage.getItem('jarvis-eleven-key') || '').trim(); }catch(e){ return ''; }
 }
@@ -755,16 +756,27 @@ async function speak(text){
           voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.3, use_speaker_boost: true }
         })
       });
-      if(!res.ok) throw new Error('ElevenLabs request failed: ' + res.status);
+      if(!res.ok){
+        let detail = '';
+        try{
+          const errJson = await res.json();
+          detail = (errJson && errJson.detail && (errJson.detail.message || errJson.detail)) || '';
+        }catch(parseErr){}
+        throw new Error(`HTTP ${res.status}${detail ? ': ' + detail : ''}`);
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       ttsAudio.onended = () => { setState('idle'); URL.revokeObjectURL(url); };
       ttsAudio.onerror = () => { setState('idle'); URL.revokeObjectURL(url); };
       ttsAudio.src = url;
       await ttsAudio.play();
+      lastElevenError = null;
       return;
     }catch(e){
-      // fall through to the free browser voice
+      // Fall through to the free browser voice, but record why so it's visible in Settings
+      // next time — otherwise this fails completely silently.
+      lastElevenError = (e && e.message) ? e.message : 'unknown error';
+      try{ elevenStatus.textContent = `Last speech attempt failed — ${lastElevenError}`; }catch(_){}
     }
   }
   speakBrowser(text);
@@ -837,14 +849,17 @@ useDeviceLocBtn.onclick = async () => {
 const elevenKeyInput = el('elevenKeyInput'), saveElevenKeyBtn = el('saveElevenKeyBtn'), clearElevenKeyBtn = el('clearElevenKeyBtn');
 const elevenVoiceSelect = el('elevenVoiceSelect'), elevenStatus = el('elevenStatus');
 
-function refreshElevenStatus(){
+async function refreshElevenStatus(){
   const key = getElevenKey();
   elevenKeyInput.value = key;
   if(key){
-    loadElevenVoices();
+    await loadElevenVoices();
   } else {
     elevenVoiceSelect.style.display = 'none';
     elevenStatus.textContent = 'No ElevenLabs key saved — using the free browser voice.';
+  }
+  if(lastElevenError){
+    elevenStatus.textContent += ` | Last speech attempt failed: ${lastElevenError}`;
   }
 }
 
