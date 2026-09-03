@@ -538,7 +538,10 @@ function initRecognition(){
       finalTranscript = '';
       handleQuery(q);
     } else {
+      // Recognition ended with nothing captured — say so, rather than going silently
+      // back to idle, which looks identical to the app simply not responding at all.
       setState('idle');
+      speak("Didn't catch that, sir. Try again.");
     }
   };
 
@@ -546,6 +549,10 @@ function initRecognition(){
     setState('idle');
     if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){
       speak("I don't have microphone access, sir. Check your browser's permission settings, or type instead.");
+    } else if(e.error !== 'no-speech' && e.error !== 'aborted'){
+      // Temporary: announce every other error reason out loud so we can pin down
+      // exactly what's failing, instead of it disappearing silently.
+      speak(`Recognition error, sir: ${e.error}.`);
     }
   };
 
@@ -572,6 +579,23 @@ function unlockAudio(){
   audioUnlocked = true;
 }
 
+function startListening(retried){
+  try{
+    recognition.start();
+    setState('listening');
+  }catch(err){
+    if(!retried){
+      // Starting an instance right after aborting the previous one can throw
+      // InvalidStateError on some WebKit builds if the native teardown hasn't
+      // finished yet — give it a brief moment then try exactly once more.
+      setTimeout(() => startListening(true), 250);
+    } else {
+      setState('idle');
+      speak(`Couldn't start listening, sir: ${(err && (err.message || err.name)) || 'unknown error'}.`);
+    }
+  }
+}
+
 sceneWrap.addEventListener('click', () => {
   unlockAudio();
   if(state === 'listening'){ recognition && recognition.stop(); return; }
@@ -580,12 +604,7 @@ sceneWrap.addEventListener('click', () => {
     speak("Voice input isn't supported in this browser, sir. Try Chrome or Edge, or type your question instead.");
     return;
   }
-  try{
-    recognition.start();
-    setState('listening');
-  }catch(err){
-    setState('idle');
-  }
+  startListening(false);
 });
 
 // ---------- Text fallback ----------
